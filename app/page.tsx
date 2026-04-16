@@ -9,24 +9,48 @@ type Client = {
   createdAt: string;
 };
 
-// Static placeholder data — no API wired yet
-const PLACEHOLDER_TOKENS = [
-  { clientId: 'client_abc123', platform: 'Google', expires: '2026-06-01 12:00', status: 'Valid' },
-  { clientId: 'client_xyz789', platform: 'Meta',   expires: '2026-05-15 08:30', status: 'Valid' },
-];
+type Token = {
+  id: number;
+  clientId: number;
+  platform: string;
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
+// Static placeholder data — Accounts not yet wired to API
 const PLACEHOLDER_ACCOUNTS = [
   { name: 'Acme Corp — Google',  clientId: 'client_abc123', platform: 'Google',  externalId: '123-456-7890' },
   { name: 'Globex — Meta Ads',   clientId: 'client_xyz789', platform: 'Meta',    externalId: 'act_987654321' },
   { name: 'Initech — TikTok',    clientId: 'client_lmn456', platform: 'TikTok',  externalId: 'tt_acc_001122' },
 ];
 
+const PLATFORM_LABELS: Record<string, string> = { GOOGLE: 'Google', META: 'Meta', TIKTOK: 'TikTok' };
+
 function PlatformBadge({ platform }: { platform: string }) {
-  const cls =
-    platform === 'Google' ? 'badge-google' :
-    platform === 'Meta'   ? 'badge-meta'   :
-    'badge-tiktok';
-  return <span className={`table-platform-badge ${cls}`}>{platform}</span>;
+  const upper = platform.toUpperCase();
+  const cls = upper === 'GOOGLE' ? 'badge-google' : upper === 'META' ? 'badge-meta' : 'badge-tiktok';
+  const label = PLATFORM_LABELS[upper] ?? platform;
+  return <span className={`table-platform-badge ${cls}`}>{label}</span>;
+}
+
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return '';
+  try { return new Date(iso).toISOString().slice(0, 16); } catch { return ''; }
+}
+
+function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '\u2014';
+  return new Date(iso).toLocaleString();
+}
+
+function tokenStatus(expiresAt: string | null | undefined): { label: string; cls: string } {
+  if (!expiresAt) return { label: 'No Expiry', cls: 'ok' };
+  return new Date(expiresAt) > new Date()
+    ? { label: 'Valid', cls: 'ok' }
+    : { label: 'Expired', cls: 'warn' };
 }
 
 export default function Page() {
@@ -56,22 +80,46 @@ export default function Page() {
   const [deleteInProgress, setDeleteInProgress]   = useState<number | null>(null);
   const [deleteError, setDeleteError]             = useState<string | null>(null);
 
-  useEffect(() => { fetchClients(); }, []);
+  // Tokens — real data
+  const [tokens, setTokens]               = useState<Token[]>([]);
+  const [tokensLoading, setTokensLoading] = useState(true);
+  const [tokensError, setTokensError]     = useState<string | null>(null);
 
-  // Close modal/menu on Escape; lock body scroll while any overlay is open
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+  // Add-token form state
+  const [tokenClientId, setTokenClientId]               = useState('');
+  const [tokenPlatform, setTokenPlatform]               = useState('');
+  const [tokenAccessToken, setTokenAccessToken]         = useState('');
+  const [tokenRefreshToken, setTokenRefreshToken]       = useState('');
+  const [tokenExpiresAt, setTokenExpiresAt]             = useState('');
+  const [tokenSubmitting, setTokenSubmitting]           = useState(false);
+  const [tokenSubmitError, setTokenSubmitError]         = useState<string | null>(null);
+  const [tokenSubmitSuccess, setTokenSubmitSuccess]     = useState(false);
+
+  // Edit token state
+  const [editingToken, setEditingToken]                         = useState<Token | null>(null);
+  const [editTokenAccessToken, setEditTokenAccessToken]         = useState('');
+  const [editTokenRefreshToken, setEditTokenRefreshToken]       = useState('');
+  const [editTokenExpiresAt, setEditTokenExpiresAt]             = useState('');
+  const [editTokenSubmitting, setEditTokenSubmitting]           = useState(false);
+  const [editTokenError, setEditTokenError]                     = useState<string | null>(null);
+
+  // Delete token state
+  const [confirmDeleteTokenId, setConfirmDeleteTokenId]     = useState<number | null>(null);
+  const [deleteTokenInProgress, setDeleteTokenInProgress]   = useState<number | null>(null);
+  const [deleteTokenError, setDeleteTokenError]             = useState<string | null>(null);
+
+  useEffect(() => { fetchClients(); fetchTokens(); }, []);
+      if (editingToken) { setEditingToken(null); setEditTokenError(null); return; }
       if (editingClient) { setEditingClient(null); setEditError(null); return; }
       if (menuOpen) setMenuOpen(false);
     };
     window.addEventListener('keydown', onKey);
-    document.body.style.overflow = (menuOpen || !!editingClient) ? 'hidden' : '';
+    document.body.style.overflow = (menuOpen || !!editingClient || !!editingToken) ? 'hidden' : '';
     return () => {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
     };
-  }, [menuOpen, editingClient]);
+  }, [menuOpen, editingClient, editingToken]);
 
   async function fetchClients() {
     setClientsLoading(true);
@@ -693,6 +741,7 @@ export default function Page() {
                 ) : clientsError ? (
                   <p style={{ color: 'var(--red)', fontSize: '14px', padding: '12px 0' }}>{clientsError}</p>
                 ) : (
+                  <>
                   <div className="table-wrapper">
                     <table aria-label="All clients">
                       <thead>
@@ -765,6 +814,7 @@ export default function Page() {
                   {deleteError && (
                     <p style={{ color: 'var(--red)', fontSize: '13px', marginTop: '12px' }}>{deleteError}</p>
                   )}
+                  </>
                 )}
               </div>
             </div>
