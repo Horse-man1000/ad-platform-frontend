@@ -1,0 +1,93 @@
+SESSION SUMMARY — AD PLATFORM FRONTEND BUILD FIX
+Date: April 16, 2026
+Repo: Horse-man1000/ad-platform-frontend
+Branch: main
+
+------------------------------------------------------------
+PROBLEMS FOUND & FIXED
+------------------------------------------------------------
+
+1. PRISMA VERSION MISMATCH (BLOCKER)
+   - prisma CLI was v7, @prisma/client was v5 (major mismatch)
+   - Fix: Uninstalled prisma v7, installed prisma@^5 + @prisma/client@^5
+   - Both now on v5.22.0
+
+2. PRISMA SCHEMA NOT FOUND (BLOCKER)
+   - schema.prisma was at ../prisma/schema.prisma (parent directory)
+   - Prisma v5 with package.json path config did not resolve it correctly
+   - Fix: Copied schema.prisma into frontend/prisma/schema.prisma
+   - Updated package.json: "prisma": { "schema": "prisma/schema.prisma" }
+
+3. SQLITE DATABASE DID NOT EXIST (BLOCKER — caused 500 error)
+   - Moving schema to new location meant db.sqlite did not exist there
+   - POST /api/clients returned HTTP 500 because Prisma had no database to write to
+   - Fix: Ran `npx prisma db push` from frontend/ to create and sync db.sqlite
+   - db.sqlite committed to repo at frontend/prisma/db.sqlite
+
+4. MISSING NODE RUNTIME DECLARATION
+   - App Router API routes require explicit Node.js runtime when using Prisma
+   - Fix: Added `export const runtime = 'nodejs';` to top of both route files:
+       app/api/health/route.js
+       app/api/clients/route.js
+
+5. @prisma/client IN WRONG DEPENDENCY SECTION
+   - npm install --save-dev moved @prisma/client to devDependencies
+   - Vercel does not install devDependencies in production
+   - Fix: Moved @prisma/client back to dependencies in package.json
+
+------------------------------------------------------------
+FILES CHANGED
+------------------------------------------------------------
+
+  package.json
+    - build script: "prisma generate && next build" (confirmed correct)
+    - prisma.schema path: updated to "prisma/schema.prisma"
+    - @prisma/client: moved from devDependencies to dependencies
+    - prisma CLI: remains in devDependencies
+
+  app/api/health/route.js
+    - Added: export const runtime = 'nodejs';
+
+  app/api/clients/route.js
+    - Added: export const runtime = 'nodejs';
+
+  prisma/schema.prisma        (NEW FILE)
+    - Full schema copied from ../prisma/schema.prisma
+
+  prisma/db.sqlite            (NEW FILE)
+    - Created by `npx prisma db push`
+    - NOTE: SQLite only works locally. Vercel requires a real DATABASE_URL.
+
+------------------------------------------------------------
+LOCAL BUILD RESULT
+------------------------------------------------------------
+
+  npm run build -> PASSES
+
+  Route (app)
+  ƒ /api/health
+  ƒ /api/clients
+
+  POST /api/clients -> 201 Created (verified with Invoke-RestMethod)
+  GET  /api/clients -> 200 OK
+
+------------------------------------------------------------
+COMMITS PUSHED TO MAIN
+------------------------------------------------------------
+
+  171624d  fix: align prisma v5, node runtime, stable app router build
+  5d4cf50  fix: create sqlite db via prisma db push, restore production route
+
+------------------------------------------------------------
+NEXT STEPS (VERCEL PRODUCTION)
+------------------------------------------------------------
+
+  - SQLite is local only. For Vercel production you need a hosted database:
+      Options: Supabase (Postgres), Neon (Postgres), PlanetScale (MySQL)
+  - Set DATABASE_URL in Vercel Environment Variables (Production)
+  - Update prisma/schema.prisma datasource provider from "sqlite" to "postgresql"
+  - Run `prisma migrate deploy` or `prisma db push` against the hosted DB
+  - Redeploy on Vercel with no build cache
+
+------------------------------------------------------------
+END SUMMARY

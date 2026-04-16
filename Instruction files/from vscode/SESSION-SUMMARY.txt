@@ -1,0 +1,73 @@
+SESSION SUMMARY — AD PLATFORM FRONTEND
+Date: April 16, 2026
+Repo: Horse-man1000/ad-platform-frontend | Branch: main
+
+------------------------------------------------------------
+PROBLEMS FOUND & FIXED
+------------------------------------------------------------
+
+1. PRISMA VERSION MISMATCH
+   - prisma CLI was v7, @prisma/client was v5
+   - Fix: Uninstalled v7, installed both at v5.22.0
+
+2. SCHEMA NOT FOUND
+   - schema.prisma was in parent directory, Prisma couldn't find it
+   - Fix: Copied into frontend/prisma/schema.prisma
+   - Updated package.json: "prisma": { "schema": "prisma/schema.prisma" }
+
+3. SQLITE DATABASE MISSING (root cause of 500 errors)
+   - Moving schema to new location meant db.sqlite didn't exist there
+   - Fix: Ran `npx prisma db push` to create and sync the database
+   - db.sqlite committed at frontend/prisma/db.sqlite
+
+4. MISSING NODE RUNTIME ON API ROUTES
+   - Prisma requires explicit Node.js runtime in App Router
+   - Fix: Added `export const runtime = 'nodejs'` to:
+       app/api/health/route.js
+       app/api/clients/route.js
+
+5. @prisma/client IN WRONG DEPENDENCY SECTION
+   - npm moved it to devDependencies — Vercel won't install that in production
+   - Fix: Moved @prisma/client back into dependencies in package.json
+
+6. TURBOPACK ROOT WARNING
+   - Next.js warned about multiple lockfiles on every dev start
+   - Fix: Added turbopack.root: __dirname to next.config.ts
+
+------------------------------------------------------------
+LOCAL BUILD RESULT
+------------------------------------------------------------
+
+  npm run build -> PASSES
+
+  Route (app)
+  f /api/health    (dynamic)
+  f /api/clients   (dynamic)
+
+  POST /api/clients -> 201 Created
+  GET  /api/clients -> 200 OK
+
+------------------------------------------------------------
+COMMITS PUSHED TO MAIN
+------------------------------------------------------------
+
+  171624d  fix: align prisma v5, node runtime, stable app router build
+  5d4cf50  fix: create sqlite db via prisma db push, restore production route
+  ad0038d  fix: set turbopack root to silence workspace detection warning
+
+------------------------------------------------------------
+NEXT STEPS — VERCEL PRODUCTION
+------------------------------------------------------------
+
+  SQLite is local only. To go live on Vercel:
+
+  1. Create a hosted Postgres DB (Supabase or Neon — both free)
+  2. Set DATABASE_URL in Vercel Environment Variables (Production)
+  3. Change prisma/schema.prisma datasource:
+       provider = "postgresql"
+       url      = env("DATABASE_URL")
+  4. Run `prisma migrate deploy` or `prisma db push` against hosted DB
+  5. Redeploy on Vercel with no build cache
+
+------------------------------------------------------------
+END SUMMARY
