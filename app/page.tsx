@@ -109,6 +109,10 @@ export default function Page() {
   const [deleteTokenError, setDeleteTokenError]             = useState<string | null>(null);
 
   useEffect(() => { fetchClients(); fetchTokens(); }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
       if (editingToken) { setEditingToken(null); setEditTokenError(null); return; }
       if (editingClient) { setEditingClient(null); setEditError(null); return; }
       if (menuOpen) setMenuOpen(false);
@@ -203,6 +207,106 @@ export default function Page() {
       setDeleteError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setDeleteInProgress(null);
+    }
+  }
+
+  // ── Token handlers ──────────────────────────────────────────────────────────
+
+  async function fetchTokens() {
+    setTokensLoading(true);
+    setTokensError(null);
+    try {
+      const res = await fetch('/api/tokens');
+      if (!res.ok) throw new Error('Failed to load tokens');
+      const json = await res.json();
+      setTokens(json.data);
+    } catch {
+      setTokensError('Could not load tokens. Please try again.');
+    } finally {
+      setTokensLoading(false);
+    }
+  }
+
+  async function handleAddToken(e: React.FormEvent) {
+    e.preventDefault();
+    setTokenSubmitting(true);
+    setTokenSubmitError(null);
+    setTokenSubmitSuccess(false);
+    try {
+      const res = await fetch('/api/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: parseInt(tokenClientId, 10),
+          platform: tokenPlatform,
+          accessToken: tokenAccessToken,
+          refreshToken: tokenRefreshToken || undefined,
+          expiresAt: tokenExpiresAt || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to save token');
+      setTokenSubmitSuccess(true);
+      setTokenClientId('');
+      setTokenPlatform('');
+      setTokenAccessToken('');
+      setTokenRefreshToken('');
+      setTokenExpiresAt('');
+      await fetchTokens();
+    } catch (err: unknown) {
+      setTokenSubmitError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setTokenSubmitting(false);
+    }
+  }
+
+  function openEditToken(token: Token) {
+    setEditingToken(token);
+    setEditTokenAccessToken(token.accessToken);
+    setEditTokenRefreshToken(token.refreshToken ?? '');
+    setEditTokenExpiresAt(toDatetimeLocal(token.expiresAt));
+    setEditTokenError(null);
+  }
+
+  async function handleEditTokenSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingToken) return;
+    setEditTokenSubmitting(true);
+    setEditTokenError(null);
+    try {
+      const res = await fetch(`/api/tokens/${editingToken.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: editTokenAccessToken,
+          refreshToken: editTokenRefreshToken || undefined,
+          expiresAt: editTokenExpiresAt || undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to update token');
+      setTokens((prev) => prev.map((t) => (t.id === editingToken.id ? json.data : t)));
+      setEditingToken(null);
+    } catch (err: unknown) {
+      setEditTokenError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setEditTokenSubmitting(false);
+    }
+  }
+
+  async function handleDeleteToken(id: number) {
+    setDeleteTokenInProgress(id);
+    setDeleteTokenError(null);
+    try {
+      const res = await fetch(`/api/tokens/${id}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message || 'Failed to delete token');
+      setTokens((prev) => prev.filter((t) => t.id !== id));
+      setConfirmDeleteTokenId(null);
+    } catch (err: unknown) {
+      setDeleteTokenError(err instanceof Error ? err.message : 'Something went wrong');
+    } finally {
+      setDeleteTokenInProgress(null);
     }
   }
 
@@ -351,7 +455,7 @@ export default function Page() {
         </section>
 
         {/* ================================================================
-            TOKENS MODULE — static placeholder
+            TOKENS MODULE — real data from /api/tokens
         ================================================================ */}
         <section className="section" id="tokens" aria-labelledby="tokensHeading">
           <div className="container">
@@ -364,27 +468,44 @@ export default function Page() {
             <div className="module-block">
               <div className="module-header">
                 <h3 className="module-title">Add Token</h3>
-                <span className="status-badge ok">Module Active</span>
+                <span className="status-badge ok">Live Data</span>
               </div>
 
               <div className="module-body">
                 <div className="module-grid">
+                  {/* LEFT: form */}
                   <div>
-                    <form aria-label="Add access token form">
+                    <form aria-label="Add access token form" onSubmit={handleAddToken}>
                       <div className="form-grid-2">
                         <div className="form-group">
                           <label className="form-label" htmlFor="tokenClientId">
                             Client ID <span className="required" aria-hidden="true">*</span>
                           </label>
-                          <input className="form-input" type="text" id="tokenClientId" name="clientId"
-                            placeholder="e.g. client_abc123" autoComplete="off" required />
+                          <input
+                            className="form-input"
+                            type="number"
+                            id="tokenClientId"
+                            placeholder="e.g. 1"
+                            autoComplete="off"
+                            required
+                            min="1"
+                            value={tokenClientId}
+                            onChange={(e) => setTokenClientId(e.target.value)}
+                          />
+                          <p className="form-hint">Numeric ID from the Clients table.</p>
                         </div>
                         <div className="form-group">
                           <label className="form-label" htmlFor="tokenPlatform">
                             Platform <span className="required" aria-hidden="true">*</span>
                           </label>
                           <div className="form-select-wrapper">
-                            <select className="form-select" id="tokenPlatform" name="platform" required defaultValue="">
+                            <select
+                              className="form-select"
+                              id="tokenPlatform"
+                              required
+                              value={tokenPlatform}
+                              onChange={(e) => setTokenPlatform(e.target.value)}
+                            >
                               <option value="" disabled>Select platform…</option>
                               <option value="GOOGLE">Google</option>
                               <option value="META">Meta</option>
@@ -395,32 +516,69 @@ export default function Page() {
                       </div>
 
                       <div className="form-group">
-                        <label className="form-label" htmlFor="accessToken">
+                        <label className="form-label" htmlFor="tokenAccessToken">
                           Access Token <span className="required" aria-hidden="true">*</span>
                         </label>
-                        <input className="form-input" type="text" id="accessToken" name="accessToken"
-                          placeholder="Paste your access token here" autoComplete="off" required />
+                        <input
+                          className="form-input"
+                          type="text"
+                          id="tokenAccessToken"
+                          placeholder="Paste your access token here"
+                          autoComplete="off"
+                          required
+                          value={tokenAccessToken}
+                          onChange={(e) => setTokenAccessToken(e.target.value)}
+                        />
                       </div>
 
                       <div className="form-group">
-                        <label className="form-label" htmlFor="refreshToken">Refresh Token</label>
-                        <input className="form-input" type="text" id="refreshToken" name="refreshToken"
-                          placeholder="Optional — paste refresh token" autoComplete="off" />
+                        <label className="form-label" htmlFor="tokenRefreshToken">Refresh Token</label>
+                        <input
+                          className="form-input"
+                          type="text"
+                          id="tokenRefreshToken"
+                          placeholder="Optional — paste refresh token"
+                          autoComplete="off"
+                          value={tokenRefreshToken}
+                          onChange={(e) => setTokenRefreshToken(e.target.value)}
+                        />
                       </div>
 
                       <div className="form-group">
-                        <label className="form-label" htmlFor="expiresAt">Expires At</label>
-                        <input className="form-input" type="datetime-local" id="expiresAt" name="expiresAt" />
+                        <label className="form-label" htmlFor="tokenExpiresAt">Expires At</label>
+                        <input
+                          className="form-input"
+                          type="datetime-local"
+                          id="tokenExpiresAt"
+                          value={tokenExpiresAt}
+                          onChange={(e) => setTokenExpiresAt(e.target.value)}
+                        />
                         <p className="form-hint">Leave blank if the token does not expire.</p>
                       </div>
 
+                      {tokenSubmitError && (
+                        <p style={{ color: 'var(--red)', fontSize: '13px', marginBottom: '12px' }}>
+                          {tokenSubmitError}
+                        </p>
+                      )}
+                      {tokenSubmitSuccess && (
+                        <p style={{ color: 'var(--green)', fontSize: '13px', marginBottom: '12px' }}>
+                          Token saved successfully.
+                        </p>
+                      )}
+
                       <div className="form-footer">
-                        <p className="form-footer-note">Fields marked <span style={{ color: 'var(--red)' }}>*</span> are required.</p>
-                        <button type="submit" className="btn btn-primary">Save Token</button>
+                        <p className="form-footer-note">
+                          Fields marked <span style={{ color: 'var(--red)' }}>*</span> are required.
+                        </p>
+                        <button type="submit" className="btn btn-primary" disabled={tokenSubmitting}>
+                          {tokenSubmitting ? 'Saving…' : 'Save Token'}
+                        </button>
                       </div>
                     </form>
                   </div>
 
+                  {/* RIGHT: platform info */}
                   <div>
                     <p className="module-sub-title">Supported Platforms</p>
                     <article className="card platform-card" aria-label="Google Ads">
@@ -451,42 +609,89 @@ export default function Page() {
                 </div>
 
                 <div className="module-divider" />
-                <p className="module-sub-title">
-                  Saved Tokens{' '}
-                  <span style={{ color: 'var(--muted)', fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>
-                    (placeholder data)
-                  </span>
-                </p>
+                <p className="module-sub-title">Saved Tokens</p>
 
-                <div className="table-wrapper">
-                  <table aria-label="Saved access tokens">
-                    <thead>
-                      <tr>
-                        <th scope="col">Client ID</th>
-                        <th scope="col">Platform</th>
-                        <th scope="col">Expires At</th>
-                        <th scope="col">Status</th>
-                        <th scope="col"><span className="sr-only">Row actions</span></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {PLACEHOLDER_TOKENS.map((t) => (
-                        <tr key={`${t.clientId}-${t.platform}`}>
-                          <td>{t.clientId}</td>
-                          <td><PlatformBadge platform={t.platform} /></td>
-                          <td>{t.expires}</td>
-                          <td><span className="status-badge ok">{t.status}</span></td>
-                          <td>
-                            <div className="table-actions">
-                              <button className="icon-btn" aria-label={`Edit token for ${t.clientId}`} title="Edit">✎</button>
-                              <button className="icon-btn" aria-label={`Delete token for ${t.clientId}`} title="Delete">✕</button>
-                            </div>
-                          </td>
+                {tokensLoading ? (
+                  <p style={{ color: 'var(--muted)', fontSize: '14px', padding: '12px 0' }}>Loading tokens…</p>
+                ) : tokensError ? (
+                  <p style={{ color: 'var(--red)', fontSize: '14px', padding: '12px 0' }}>{tokensError}</p>
+                ) : (
+                  <div className="table-wrapper">
+                    <table aria-label="Saved access tokens">
+                      <thead>
+                        <tr>
+                          <th scope="col">Client ID</th>
+                          <th scope="col">Platform</th>
+                          <th scope="col">Expires At</th>
+                          <th scope="col">Status</th>
+                          <th scope="col"><span className="sr-only">Row actions</span></th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {tokens.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} style={{ textAlign: 'center', color: 'var(--muted)' }}>
+                              No tokens yet. Add one above.
+                            </td>
+                          </tr>
+                        ) : (
+                          tokens.map((t) => {
+                            const { label, cls } = tokenStatus(t.expiresAt);
+                            return (
+                              <tr key={t.id}>
+                                <td>{t.clientId}</td>
+                                <td><PlatformBadge platform={t.platform} /></td>
+                                <td>{formatDateTime(t.expiresAt)}</td>
+                                <td><span className={`status-badge ${cls}`}>{label}</span></td>
+                                <td>
+                                  {confirmDeleteTokenId === t.id ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
+                                      <span style={{ fontSize: '12px', color: 'var(--text)' }}>Delete?</span>
+                                      <button
+                                        className="btn"
+                                        style={{ padding: '4px 10px', fontSize: '12px', background: 'var(--red)', color: 'var(--white)', border: 'none' }}
+                                        disabled={deleteTokenInProgress === t.id}
+                                        onClick={() => handleDeleteToken(t.id)}
+                                      >
+                                        {deleteTokenInProgress === t.id ? '…' : 'Yes'}
+                                      </button>
+                                      <button
+                                        className="btn btn-ghost"
+                                        style={{ padding: '4px 10px', fontSize: '12px' }}
+                                        disabled={deleteTokenInProgress === t.id}
+                                        onClick={() => { setConfirmDeleteTokenId(null); setDeleteTokenError(null); }}
+                                      >
+                                        No
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="table-actions">
+                                      <button
+                                        className="icon-btn"
+                                        aria-label={`Edit token ${t.id}`}
+                                        title="Edit"
+                                        onClick={() => openEditToken(t)}
+                                      >✎</button>
+                                      <button
+                                        className="icon-btn"
+                                        aria-label={`Delete token ${t.id}`}
+                                        title="Delete"
+                                        onClick={() => { setConfirmDeleteTokenId(t.id); setDeleteTokenError(null); }}
+                                      >✕</button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {deleteTokenError && (
+                  <p style={{ color: 'var(--red)', fontSize: '13px', marginTop: '12px' }}>{deleteTokenError}</p>
+                )}
               </div>
             </div>
           </div>
@@ -956,6 +1161,95 @@ export default function Page() {
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
                   {editSubmitting ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================================
+          EDIT TOKEN MODAL
+      ================================================================ */}
+      {editingToken && (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="editTokenModalTitle"
+          onClick={(e) => { if (e.target === e.currentTarget) { setEditingToken(null); setEditTokenError(null); } }}
+        >
+          <div className="modal">
+            <div className="modal-header">
+              <h2 className="modal-title" id="editTokenModalTitle">Edit Token</h2>
+              <button
+                className="icon-btn"
+                aria-label="Close edit token modal"
+                onClick={() => { setEditingToken(null); setEditTokenError(null); }}
+              >
+                ✕
+              </button>
+            </div>
+            <form onSubmit={handleEditTokenSubmit}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Platform</label>
+                  <p style={{ fontSize: '14px', color: 'var(--text)', marginTop: '6px' }}>
+                    <PlatformBadge platform={editingToken.platform} />
+                    <span style={{ marginLeft: 8, color: 'var(--muted)', fontSize: '12px' }}>(read-only)</span>
+                  </p>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="editTokenAccessToken">
+                    Access Token <span className="required" aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    id="editTokenAccessToken"
+                    autoComplete="off"
+                    required
+                    value={editTokenAccessToken}
+                    onChange={(e) => setEditTokenAccessToken(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="editTokenRefreshToken">Refresh Token</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    id="editTokenRefreshToken"
+                    autoComplete="off"
+                    placeholder="Optional"
+                    value={editTokenRefreshToken}
+                    onChange={(e) => setEditTokenRefreshToken(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="editTokenExpiresAt">Expires At</label>
+                  <input
+                    className="form-input"
+                    type="datetime-local"
+                    id="editTokenExpiresAt"
+                    value={editTokenExpiresAt}
+                    onChange={(e) => setEditTokenExpiresAt(e.target.value)}
+                  />
+                </div>
+                {editTokenError && (
+                  <p style={{ color: 'var(--red)', fontSize: '13px', marginTop: '4px' }}>{editTokenError}</p>
+                )}
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={editTokenSubmitting}
+                  onClick={() => { setEditingToken(null); setEditTokenError(null); }}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={editTokenSubmitting}>
+                  {editTokenSubmitting ? 'Saving…' : 'Save Changes'}
                 </button>
               </div>
             </form>
