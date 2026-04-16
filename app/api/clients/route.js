@@ -1,3 +1,5 @@
+export const runtime = 'nodejs';
+
 import prisma from '../../../lib/prisma.js';
 
 function isSimpleEmail(val) {

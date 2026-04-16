@@ -1,0 +1,130 @@
+FINAL VERIFICATION TASK — NEXT.JS APP ROUTER + PRISMA + VERCEL
+
+GOAL:
+Verify that the frontend repo (ad-platform-frontend) is correctly configured so
+Vercel can successfully build and deploy App Router API routes using Prisma.
+
+DO NOT CHANGE ARCHITECTURE.
+DO NOT GUESS.
+VERIFY AND REPORT ONLY.
+
+------------------------------------------------------------
+1. REPOSITORY & CONTEXT
+------------------------------------------------------------
+- Confirm repo: Horse-man1000/ad-platform-frontend
+- Confirm branch: main
+- Confirm this repo is the one connected to the Vercel project.
+
+------------------------------------------------------------
+2. API ROUTES EXIST (CRITICAL)
+------------------------------------------------------------
+Confirm these files exist in THIS repo:
+
+app/api/health/route.js
+app/api/clients/route.js
+
+Confirm:
+- They export App Router handlers (GET / POST).
+- No Express req/res used.
+- At top of each route file:
+  export const runtime = 'nodejs';
+
+------------------------------------------------------------
+3. PRISMA CLIENT FILE
+------------------------------------------------------------
+Verify lib/prisma.js EXACTLY follows this safe pattern:
+
+import { PrismaClient } from '@prisma/client';
+
+const globalForPrisma = globalThis;
+
+const prisma = globalForPrisma.prisma ?? new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = prisma;
+}
+
+export default prisma;
+
+No fs / path / schema loading / side effects.
+
+------------------------------------------------------------
+4. DEPENDENCIES (FRONTEND REPO)
+------------------------------------------------------------
+From frontend directory:
+
+npm ls @prisma/client prisma
+
+Expected:
+- @prisma/client present
+- prisma CLI present (dev dependency)
+
+------------------------------------------------------------
+5. BUILD SCRIPT (MANDATORY)
+------------------------------------------------------------
+Verify frontend/package.json scripts EXACTLY include:
+
+"scripts": {
+  "dev": "next dev",
+  "build": "prisma generate && next build",
+  "start": "next start",
+  "lint": "eslint"
+}
+
+Confirm:
+- NO "postinstall" script exists.
+- Build script is NOT overridden elsewhere.
+
+------------------------------------------------------------
+6. LOCAL BUILD VALIDATION (BLOCKER CHECK)
+------------------------------------------------------------
+From frontend directory run:
+
+npm run build
+
+Build MUST succeed and output something like:
+
+Route (app)
+ƒ /api/health
+ƒ /api/clients
+
+If local build fails, STOP and report error.
+
+------------------------------------------------------------
+7. VERCEL BUILD SETTINGS
+------------------------------------------------------------
+In Vercel → Project → Build & Development Settings verify:
+
+Framework: Next.js
+Root Directory: (empty)
+Build Command: npm run build
+Install Command: (empty)
+
+Confirm Build Command is NOT "next build".
+
+------------------------------------------------------------
+8. VERCEL ENV VARS (PRODUCTION)
+------------------------------------------------------------
+Verify environment variable exists:
+
+DATABASE_URL = file:./dev.db
+
+(Value can be placeholder, must exist.)
+
+------------------------------------------------------------
+9. DEPLOYMENT TEST
+------------------------------------------------------------
+After redeploy (no cache), verify in production:
+
+/api/health returns JSON
+/api/clients returns JSON
+
+------------------------------------------------------------
+10. REPORT BACK
+------------------------------------------------------------
+Report one of the following ONLY:
+
+- ✅ All checks pass, production API works
+- ❌ First failing step + exact error output
+
+END TASK
